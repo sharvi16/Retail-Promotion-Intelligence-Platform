@@ -28,14 +28,16 @@ from src.segmentation import load_rfm, find_optimal_k, run_segmentation, \
     plot_segment_profiles, plot_segment_distribution, segment_summary_table
 from src.elasticity_model import load_data as load_elasticity_data, \
     aggregate_weekly_demand, compute_elasticity_matrix, \
-    plot_elasticity_heatmap, plot_promo_effectiveness, generate_elasticity_insights
+    plot_elasticity_heatmap, plot_promo_effectiveness, generate_elasticity_insights, \
+    plot_category_demand_drivers
 from src.promo_simulator import load_simulation_inputs, run_full_simulation, \
-    find_optimal_promos, plot_roi_matrix, generate_recommendations
+    find_optimal_promos, plot_roi_matrix, generate_recommendations, \
+    optimize_promo_budget, plot_budget_allocation
 
 
 def main():
     print("=" * 60)
-    print("CPG PRICING & PROMOTION OPTIMIZATION ENGINE")
+    print("RETAIL PROMOTION INTELLIGENCE PLATFORM")
     print("=" * 60)
 
     # ── Step 1: Data Pipeline ──────────────────────────────
@@ -80,6 +82,15 @@ def main():
     plot_elasticity_heatmap(elasticity_df)
     plot_promo_effectiveness(elasticity_df)
 
+    top_category = weekly.groupby("COMMODITY_DESC")["n_transactions"].sum().idxmax()
+    top_segment = (
+        weekly[weekly["COMMODITY_DESC"] == top_category]
+        .groupby("SEGMENT_NAME")["n_transactions"]
+        .sum()
+        .idxmax()
+    )
+    plot_category_demand_drivers(weekly, top_category, top_segment)
+
     insights = generate_elasticity_insights(elasticity_df)
     print("\nKey Elasticity Insights:")
     for ins in insights:
@@ -97,9 +108,18 @@ def main():
     optimal = find_optimal_promos(sim_results, optimize_for="promo_roi")
     plot_roi_matrix(optimal)
 
+    total_budget = 50_000
+    budget_plan = optimize_promo_budget(sim_results, total_budget=total_budget)
+    plot_budget_allocation(budget_plan, total_budget=total_budget)
+
     print("\nTop 5 Optimal Promotions (by ROI):")
     print(optimal.nlargest(5, "promo_roi")[
         ["category", "segment", "promo_type", "promo_roi", "margin_impact"]
+    ].to_string(index=False))
+
+    print(f"\nBudget-Optimized Allocation (${total_budget:,.0f} total):")
+    print(budget_plan.head(5)[
+        ["category", "segment", "promo_type", "allocation_ratio", "allocated_budget", "expected_objective_value"]
     ].to_string(index=False))
 
     recs = generate_recommendations(optimal, sim_results)
@@ -112,6 +132,7 @@ def main():
     # Save simulation results
     sim_results.to_parquet(Path("data/processed/simulation_results.parquet"), index=False)
     optimal.to_parquet(Path("data/processed/optimal_promos.parquet"), index=False)
+    budget_plan.to_parquet(Path("data/processed/budget_allocation.parquet"), index=False)
 
     print("\n" + "=" * 60)
     print("PIPELINE COMPLETE")

@@ -7,6 +7,7 @@ promotion strategies across customer segments and product categories.
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from scipy.optimize import linprog
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -227,6 +228,135 @@ def find_optimal_promos(sim_results, optimize_for="promo_roi"):
     ].sort_values(optimize_for, ascending=False)
 
     return optimal
+
+
+def optimize_promo_budget(sim_results, total_budget, objective="net_incremental_revenue"):
+    """Allocate a promo budget across category-segment pairs.
+
+    The optimizer chooses the best promo type per category-segment pair first,
+    then uses a fractional knapsack formulation to maximize the chosen objective
+    under a total budget constraint.
+    """
+    if sim_results.empty:
+        return sim_results.copy()
+
+    candidates = sim_results.copy()
+    if "margin_impact" in candidates.columns:
+        candidates = candidates[candidates["margin_impact"] > 0].copy()
+    if "promo_roi" in candidates.columns:
+        candidates = candidates[candidates["promo_roi"] > 0].copy()
+    candidates = candidates[candidates["total_promo_cost"] > 0].copy()
+
+    if candidates.empty:
+        candidates = sim_results.copy()
+
+    if objective not in candidates.columns:
+        raise KeyError(f"Objective column '{objective}' not found in simulation results.")
+
+    pair_best = candidates.loc[
+        candidates.groupby(["category", "segment"])[objective].idxmax()
+    ].copy()
+
+    pair_best = pair_best[pair_best["total_promo_cost"] > 0].copy()
+    pair_best["value_density"] = pair_best[objective] / pair_best["total_promo_cost"]
+    pair_best = pair_best.sort_values("value_density", ascending=False).reset_index(drop=True)
+
+    allocations = []
+    remaining_budget = float(total_budget)
+
+    for _, row in pair_best.iterrows():
+        if remaining_budget <= 0:
+            allocation_ratio = 0.0
+        else:
+            full_cost = float(row["total_promo_cost"])
+            allocation_ratio = min(1.0, remaining_budget / full_cost)
+
+        allocated_budget = allocation_ratio * float(row["total_promo_cost"])
+        expected_value = allocation_ratio * float(row[objective])
+        expected_revenue = allocation_ratio * float(row["incremental_revenue"])
+
+        remaining_budget -= allocated_budget
+        allocations.append({
+            **row.to_dict(),
+            "allocation_ratio": round(allocation_ratio, 4),
+            "allocated_budget": round(allocated_budget, 2),
+            "expected_objective_value": round(expected_value, 2),
+            "expected_incremental_revenue": round(expected_revenue, 2),
+            "budget_utilization_pct": round((allocated_budget / total_budget) * 100, 1) if total_budget > 0 else 0,
+            "remaining_budget_after_allocation": round(max(remaining_budget, 0.0), 2),
+        })
+
+    plan = pd.DataFrame(allocations)
+    if plan.empty:
+        return plan
+
+    plan["pair_label"] = plan["category"].astype(str) + " | " + plan["segment"].astype(str)
+    plan["expected_return_on_spend"] = np.where(
+        plan["allocated_budget"] > 0,
+        plan["expected_objective_value"] / plan["allocated_budget"],
+        0,
+    )
+
+    return plan.sort_values("expected_objective_value", ascending=False).reset_index(drop=True)
+
+
+def plot_budget_allocation(plan_df, total_budget):
+    """Plot the optimized budget allocation and its expected return."""
+    if plan_df.empty:
+        print("No budget allocation results to plot.")
+        return None
+
+    top_plan = plan_df.head(15).copy()
+
+    fig = make_subplots(
+        rows=1,
+        cols=2,
+        subplot_titles=("Allocated Budget", "Expected Net Incremental Revenue"),
+        horizontal_spacing=0.12,
+    )
+
+    fig.add_trace(
+        go.Bar(
+            x=top_plan["allocated_budget"],
+            y=top_plan["pair_label"],
+            orientation="h",
+            marker_color="#1976D2",
+            name="Allocated Budget",
+            text=top_plan["allocation_ratio"].map(lambda x: f"{x:.0%}"),
+            textposition="auto",
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=top_plan["expected_objective_value"],
+            y=top_plan["pair_label"],
+            orientation="h",
+            marker_color="#43A047",
+            name="Expected Return",
+            text=top_plan["expected_objective_value"].map(lambda x: f"${x:,.0f}"),
+            textposition="auto",
+        ),
+        row=1,
+        col=2,
+    )
+
+    fig.update_layout(
+        title=f"Optimal Promo Budget Allocation<br><sub>Total budget: ${total_budget:,.0f}</sub>",
+        height=650,
+        width=1300,
+        showlegend=False,
+    )
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    fig.write_html(str(OUTPUT_DIR / "budget_allocation.html"))
+    try:
+        fig.write_image(str(OUTPUT_DIR / "budget_allocation.png"), scale=2)
+    except Exception as exc:
+        print(f"Skipping PNG export for budget allocation: {exc}")
+
+    return fig
 
 
 def plot_promo_comparison(sim_results, category):

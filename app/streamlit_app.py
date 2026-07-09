@@ -15,6 +15,8 @@ import sys
 
 sys.path.append(str(Path(__file__).parent.parent))
 from src.promo_simulator import PROMO_TYPES, simulate_single_promo, DEFAULT_GROSS_MARGIN
+from src.promo_simulator import optimize_promo_budget, plot_budget_allocation
+from src.elasticity_model import plot_category_demand_drivers
 
 
 PROCESSED_DIR = Path("data/processed")
@@ -22,7 +24,7 @@ PROCESSED_DIR = Path("data/processed")
 
 # ── Page Config ────────────────────────────────────────────
 st.set_page_config(
-    page_title="CPG Pricing & Promo Optimizer",
+    page_title="Retail Promotion Intelligence Platform",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -31,12 +33,14 @@ st.set_page_config(
 
 @st.cache_data
 def load_data():
+    budget_path = PROCESSED_DIR / "budget_allocation.parquet"
     return {
         "rfm": pd.read_parquet(PROCESSED_DIR / "rfm_segmented.parquet"),
         "elasticity": pd.read_parquet(PROCESSED_DIR / "elasticity_results.parquet"),
         "weekly": pd.read_parquet(PROCESSED_DIR / "weekly_demand.parquet"),
         "simulation": pd.read_parquet(PROCESSED_DIR / "simulation_results.parquet"),
         "optimal": pd.read_parquet(PROCESSED_DIR / "optimal_promos.parquet"),
+        "budget_plan": pd.read_parquet(budget_path) if budget_path.exists() else pd.DataFrame(),
     }
 
 
@@ -55,7 +59,7 @@ page = st.sidebar.radio(
 # PAGE 1: OVERVIEW
 # ═══════════════════════════════════════════════════════════
 if page == "Overview":
-    st.title("CPG Pricing & Promotion Optimization")
+    st.title("Retail Promotion Intelligence Platform")
     st.markdown(
         "Interactive decision-support tool for optimizing pricing, discounts, "
         "and promotional strategies across customer segments."
@@ -210,6 +214,26 @@ elif page == "Elasticity Map":
         fig.update_layout(height=450)
         st.plotly_chart(fig, use_container_width=True)
 
+        st.subheader("Category Demand Drivers")
+        driver_col1, driver_col2 = st.columns(2)
+        with driver_col1:
+            driver_category = st.selectbox(
+                "Category for demand driver view",
+                sorted(data["weekly"]["COMMODITY_DESC"].unique()),
+                key="driver_category",
+            )
+        with driver_col2:
+            driver_segment = st.selectbox(
+                "Segment for demand driver view",
+                sorted(data["weekly"]["SEGMENT_NAME"].unique()),
+                key="driver_segment",
+            )
+
+        driver_result = plot_category_demand_drivers(data["weekly"], driver_category, driver_segment)
+        if driver_result:
+            driver_fig, _, _ = driver_result
+            st.plotly_chart(driver_fig, use_container_width=True)
+
 
 # ═══════════════════════════════════════════════════════════
 # PAGE 4: PROMO SIMULATOR
@@ -318,6 +342,38 @@ elif page == "Recommendations":
     optimal = data["optimal"]
     sim = data["simulation"]
 
+    # Budget allocation optimizer
+    st.subheader("Budget Allocation Optimizer")
+    promo_budget = st.slider("Total promo budget ($)", 10_000, 250_000, 50_000, step=5_000)
+    budget_plan = optimize_promo_budget(sim, total_budget=promo_budget)
+
+    if budget_plan.empty:
+        st.info("No budget allocation plan could be generated from the current scenarios.")
+    else:
+        budget_metrics = st.columns(4)
+        budget_metrics[0].metric("Budget", f"${promo_budget:,.0f}")
+        budget_metrics[1].metric("Allocated", f"${budget_plan['allocated_budget'].sum():,.0f}")
+        budget_metrics[2].metric("Expected Return", f"${budget_plan['expected_objective_value'].sum():,.0f}")
+        budget_metrics[3].metric("Top Allocation", f"{budget_plan.iloc[0]['allocation_ratio']:.0%}")
+
+        budget_fig = plot_budget_allocation(budget_plan, total_budget=promo_budget)
+        if budget_fig:
+            st.plotly_chart(budget_fig, use_container_width=True)
+
+        st.dataframe(
+            budget_plan[[
+                "category", "segment", "promo_type", "allocation_ratio",
+                "allocated_budget", "expected_objective_value", "expected_return_on_spend",
+            ]].style.format({
+                "allocation_ratio": "{:.0%}",
+                "allocated_budget": "${:,.0f}",
+                "expected_objective_value": "${:,.0f}",
+                "expected_return_on_spend": "{:.2f}x",
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+
     # Top opportunities
     st.subheader("Highest ROI Promotion Opportunities")
     top_source = optimal[optimal["margin_impact"] > 0].copy()
@@ -377,6 +433,6 @@ elif page == "Recommendations":
 # ── Footer ─────────────────────────────────────────────────
 st.sidebar.divider()
 st.sidebar.caption(
-    "CPG Pricing & Promotion Optimization Engine | "
+    "Retail Promotion Intelligence Platform | "
     "Data: Dunnhumby - The Complete Journey"
 )
