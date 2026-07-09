@@ -1,0 +1,12 @@
+data/raw/
+data/processed/
+.venv/
+outputs/figures/*
+!outputs/figures/.gitkeep
+__pycache__/
+*.pyc
+.DS_Store
+.env
+*.egg-info/
+dist/
+build/
