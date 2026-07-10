@@ -35,7 +35,7 @@ st.set_page_config(
 
 @st.cache_data
 def load_data():
-    budget_path = PROCESSED_DIR / "budget_allocation.parquet"
+    budget_path = PROCESSED_DIR / "optimization_results.parquet"
     return {
         "rfm": pd.read_parquet(PROCESSED_DIR / "rfm_segmented.parquet"),
         "elasticity": pd.read_parquet(PROCESSED_DIR / "elasticity_results.parquet"),
@@ -346,36 +346,63 @@ elif page == "Recommendations":
 
     # Budget allocation optimizer
     st.subheader("Budget Allocation Optimizer")
-    promo_budget = st.slider("Total promo budget ($)", 10_000, 250_000, 50_000, step=5_000)
-    budget_inputs = run_optimization(promo_budget)
-    budget_plan = budget_inputs[0] if isinstance(budget_inputs, tuple) else budget_inputs
+    promo_budget = st.slider("Total promo budget ($)", 1_000, 50_000, 5_000, step=1_000)
+
+    try:
+        budget_result = run_optimization(budget=promo_budget)
+        # run_optimization returns a DataFrame directly
+        budget_plan = budget_result if isinstance(budget_result, pd.DataFrame) else budget_result[0]
+    except Exception as e:
+        st.error(f"Optimization error: {e}")
+        budget_plan = pd.DataFrame()
 
     if budget_plan.empty:
         st.info("No budget allocation plan could be generated from the current scenarios.")
     else:
-        budget_metrics = st.columns(4)
-        budget_metrics[0].metric("Budget", f"${promo_budget:,.0f}")
-        budget_metrics[1].metric("Allocated", f"${budget_plan['allocated_budget'].sum():,.0f}")
-        budget_metrics[2].metric("Expected Return", f"${budget_plan['expected_objective_value'].sum():,.0f}")
-        budget_metrics[3].metric("Top Allocation", f"{budget_plan.iloc[0]['allocation_ratio']:.0%}")
+        # Filter to non-zero allocations
+        active = budget_plan[budget_plan["optimal_discount_pct"] > 0.1].copy()
 
-        budget_fig = plot_optimal_allocation(budget_plan)
-        if budget_fig:
-            st.plotly_chart(budget_fig, use_container_width=True)
+        if active.empty:
+            st.info("Optimizer found no profitable discount allocations at this budget level.")
+        else:
+            active = active.sort_values("profit_change_pct", ascending=False)
 
-        st.dataframe(
-            budget_plan[[
-                "category", "segment", "promo_type", "allocation_ratio",
-                "allocated_budget", "expected_objective_value", "expected_return_on_spend",
-            ]].style.format({
-                "allocation_ratio": "{:.0%}",
-                "allocated_budget": "${:,.0f}",
-                "expected_objective_value": "${:,.0f}",
-                "expected_return_on_spend": "{:.2f}x",
-            }),
-            use_container_width=True,
-            hide_index=True,
-        )
+            budget_metrics = st.columns(4)
+            budget_metrics[0].metric("Budget", f"${promo_budget:,.0f}")
+            budget_metrics[1].metric("Spent", f"${active['promo_cost'].sum():,.0f}")
+            budget_metrics[2].metric(
+                "Profit Lift",
+                f"${active['profit_change'].sum():,.0f}",
+            )
+            budget_metrics[3].metric(
+                "Top Discount",
+                f"{active.iloc[0]['optimal_discount_pct']:.1f}%",
+            )
+
+            fig = plot_optimal_allocation(budget_plan)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+
+            st.dataframe(
+                active[[
+                    "COMMODITY_DESC", "SEGMENT_NAME", "optimal_discount_pct",
+                    "volume_lift_pct", "profit_change_pct", "promo_cost",
+                ]].rename(columns={
+                    "COMMODITY_DESC": "Category",
+                    "SEGMENT_NAME": "Segment",
+                    "optimal_discount_pct": "Discount %",
+                    "volume_lift_pct": "Volume Lift %",
+                    "profit_change_pct": "Profit Change %",
+                    "promo_cost": "Promo Cost ($)",
+                }).style.format({
+                    "Discount %": "{:.1f}%",
+                    "Volume Lift %": "{:+.1f}%",
+                    "Profit Change %": "{:+.1f}%",
+                    "Promo Cost ($)": "${:,.0f}",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
 
     # Top opportunities
     st.subheader("Highest ROI Promotion Opportunities")

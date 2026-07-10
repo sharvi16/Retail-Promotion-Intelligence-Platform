@@ -153,8 +153,8 @@ Display placement has 2–4x more impact on demand than price discounts or maile
 ## Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/retail-promotion-intelligence.git
-cd retail-promotion-intelligence
+git clone https://github.com/YOUR_USERNAME/Retail-Promotion-Intelligence-Platform.git
+cd Retail-Promotion-Intelligence-Platform
 
 pip install -r requirements.txt
 
@@ -208,6 +208,11 @@ retail-promotion-intelligence/
 
 ---
 
+## Resume One-Liner
+
+> Built a retail promotion intelligence platform using econometric modeling (log-log OLS), customer segmentation (RFM + K-Means), and constrained budget optimization (SciPy SLSQP) on 2 years of household transaction data -- with an interactive Streamlit dashboard that identifies optimal promo strategies per segment, showing that shallow 5% discounts yield 4.9x ROI while BOGO offers destroy 269% of margin despite 294% volume lift.
+
+---
 ## Future Work
 
 - **Time-series demand forecasting** (Prophet/LightGBM) to predict baseline demand before overlaying promo effects
