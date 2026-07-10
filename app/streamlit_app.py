@@ -13,13 +13,15 @@ from plotly.subplots import make_subplots
 from pathlib import Path
 import sys
 
-sys.path.append(str(Path(__file__).parent.parent))
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.append(str(ROOT_DIR))
+
 from src.promo_simulator import PROMO_TYPES, simulate_single_promo, DEFAULT_GROSS_MARGIN
-from src.promo_simulator import optimize_promo_budget, plot_budget_allocation
+from src.budget_optimizer import optimize_budget, plot_optimal_allocation, run_optimization
 from src.elasticity_model import plot_category_demand_drivers
 
 
-PROCESSED_DIR = Path("data/processed")
+PROCESSED_DIR = ROOT_DIR / "data" / "processed"
 
 
 # ── Page Config ────────────────────────────────────────────
@@ -345,7 +347,8 @@ elif page == "Recommendations":
     # Budget allocation optimizer
     st.subheader("Budget Allocation Optimizer")
     promo_budget = st.slider("Total promo budget ($)", 10_000, 250_000, 50_000, step=5_000)
-    budget_plan = optimize_promo_budget(sim, total_budget=promo_budget)
+    budget_inputs = run_optimization(promo_budget)
+    budget_plan = budget_inputs[0] if isinstance(budget_inputs, tuple) else budget_inputs
 
     if budget_plan.empty:
         st.info("No budget allocation plan could be generated from the current scenarios.")
@@ -356,7 +359,7 @@ elif page == "Recommendations":
         budget_metrics[2].metric("Expected Return", f"${budget_plan['expected_objective_value'].sum():,.0f}")
         budget_metrics[3].metric("Top Allocation", f"{budget_plan.iloc[0]['allocation_ratio']:.0%}")
 
-        budget_fig = plot_budget_allocation(budget_plan, total_budget=promo_budget)
+        budget_fig = plot_optimal_allocation(budget_plan)
         if budget_fig:
             st.plotly_chart(budget_fig, use_container_width=True)
 

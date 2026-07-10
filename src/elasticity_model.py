@@ -11,12 +11,14 @@ from pathlib import Path
 import plotly.express as px
 import plotly.graph_objects as go
 import warnings
+from src.explainability import plot_category_demand_drivers
 
 warnings.filterwarnings("ignore")
 
 
-PROCESSED_DIR = Path("data/processed")
-OUTPUT_DIR = Path("outputs/figures")
+ROOT_DIR = Path(__file__).resolve().parent.parent
+PROCESSED_DIR = ROOT_DIR / "data" / "processed"
+OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
 
 
 def load_data():
@@ -172,96 +174,6 @@ def compute_overall_elasticity(weekly_data):
     return pd.DataFrame(results)
 
 
-def fit_demand_driver_model(group_df):
-    """Fit a standardized OLS model for a category or category-segment slice."""
-    if len(group_df) < 20:
-        return None
-
-    df = group_df.copy().sort_values("WEEK_NO")
-    df["time_trend"] = np.arange(len(df))
-
-    features = ["log_price", "promo_share", "display_share", "mailer_share", "is_festive", "time_trend"]
-    feature_labels = {
-        "log_price": "Price",
-        "promo_share": "Promo Share",
-        "display_share": "Display Share",
-        "mailer_share": "Mailer Share",
-        "is_festive": "Festive Period",
-        "time_trend": "Time Trend",
-    }
-
-    standardized = df[features].copy()
-    means = standardized.mean()
-    stds = standardized.std(ddof=0).replace(0, 1)
-    standardized = (standardized - means) / stds
-
-    X = sm.add_constant(standardized)
-    y = df["log_quantity"]
-
-    try:
-        model = sm.OLS(y, X).fit()
-    except Exception:
-        return None
-
-    coef = model.params.drop("const", errors="ignore")
-    drivers = pd.DataFrame({
-        "feature": coef.index,
-        "label": [feature_labels.get(name, name) for name in coef.index],
-        "std_coef": coef.values,
-        "importance": np.abs(coef.values),
-    }).sort_values("importance", ascending=False).reset_index(drop=True)
-
-    return model, drivers
-
-
-def plot_category_demand_drivers(weekly_data, category, segment=None):
-    """Plot a waterfall chart of standardized demand drivers for a category."""
-    group = weekly_data[weekly_data["COMMODITY_DESC"] == category].copy()
-    if segment is not None:
-        group = group[group["SEGMENT_NAME"] == segment].copy()
-
-    fit = fit_demand_driver_model(group)
-    if fit is None:
-        print(f"Not enough data to model demand drivers for {category}.")
-        return None
-
-    model, drivers = fit
-    safe_segment = segment if segment is not None else "all_segments"
-    safe_name = f"{category}_{safe_segment}".replace(" ", "_").replace("/", "_")[:40]
-
-    fig = go.Figure(
-        go.Waterfall(
-            name="Drivers",
-            orientation="v",
-            measure=["relative"] * len(drivers) + ["total"],
-            x=drivers["label"].tolist() + ["Total signal"],
-            y=drivers["std_coef"].tolist() + [drivers["std_coef"].sum()],
-            text=[f"{value:+.2f}" for value in drivers["std_coef"].tolist()] + [f"{drivers['std_coef'].sum():+.2f}"],
-            connector={"line": {"color": "#BDBDBD"}},
-            increasing={"marker": {"color": "#2E7D32"}},
-            decreasing={"marker": {"color": "#C62828"}},
-            totals={"marker": {"color": "#1565C0"}},
-        )
-    )
-
-    title_suffix = f" for {segment}" if segment else ""
-    fig.update_layout(
-        title=f"What Drives Demand in {category}{title_suffix}?<br><sub>Standardized OLS coefficients from the weekly demand model</sub>",
-        xaxis_title="Demand drivers",
-        yaxis_title="Relative coefficient strength",
-        height=600,
-        width=1100,
-    )
-
-    fig.write_html(str(OUTPUT_DIR / f"demand_drivers_{safe_name}.html"))
-    try:
-        fig.write_image(str(OUTPUT_DIR / f"demand_drivers_{safe_name}.png"), scale=2)
-    except Exception as exc:
-        print(f"Skipping PNG export for demand drivers: {exc}")
-
-    return fig, model, drivers
-
-
 def plot_elasticity_heatmap(elasticity_df):
     """Create heatmap: categories x segments, colored by elasticity."""
     # Filter to significant results only
@@ -302,10 +214,7 @@ def plot_elasticity_heatmap(elasticity_df):
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     fig.write_html(str(OUTPUT_DIR / "elasticity_heatmap.html"))
-    try:
-        fig.write_image(str(OUTPUT_DIR / "elasticity_heatmap.png"), scale=2)
-    except Exception as exc:
-        print(f"Skipping PNG export for elasticity heatmap: {exc}")
+    fig.write_image(str(OUTPUT_DIR / "elasticity_heatmap.png"), scale=2)
     print("Saved elasticity heatmap.")
 
     return fig

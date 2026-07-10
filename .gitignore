@@ -3,6 +3,11 @@ data/processed/
 .venv/
 outputs/figures/*
 !outputs/figures/.gitkeep
+!outputs/figures/elasticity_heatmap.png
+!outputs/figures/segment_distribution.png
+!outputs/figures/optimal_allocation.png
+!outputs/figures/profit_waterfall.png
+!outputs/figures/demand_drivers_heatmap.png
 __pycache__/
 *.pyc
 .DS_Store

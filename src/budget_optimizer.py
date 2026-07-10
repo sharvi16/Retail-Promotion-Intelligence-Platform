@@ -16,8 +16,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-PROCESSED_DIR = Path("data/processed")
-OUTPUT_DIR = Path("outputs/figures")
+ROOT_DIR = Path(__file__).resolve().parent.parent
+PROCESSED_DIR = ROOT_DIR / "data" / "processed"
+OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
 
 
 def load_optimizer_inputs():

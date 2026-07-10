@@ -244,6 +244,19 @@ def print_driver_insights(drivers_df):
               f"(avg effect: {overall.iloc[0]:.3f})")
 
 
+def plot_category_demand_drivers(weekly_data, category, segment=None):
+    """
+    Fit OLS model for a category and segment, create a horizontal bar chart,
+    and return (fig, coefs_df, r2) for the Streamlit dashboard.
+    """
+    result = extract_coefficients(weekly_data, category, segment)
+    if result is None:
+        return None
+    coefs_df, r2 = result
+    fig = plot_demand_drivers(weekly_data, category, segment)
+    return fig, coefs_df, r2
+
+
 if __name__ == "__main__":
     print("Loading weekly demand data...")
     weekly = pd.read_parquet(PROCESSED_DIR / "weekly_demand.parquet")

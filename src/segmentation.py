@@ -252,10 +252,7 @@ def plot_segment_distribution(rfm):
     fig.update_layout(title="Segment: Household Share vs Revenue Share", width=1000, height=500)
 
     fig.write_html(str(OUTPUT_DIR / "segment_distribution.html"))
-    try:
-        fig.write_image(str(OUTPUT_DIR / "segment_distribution.png"), scale=2)
-    except Exception as exc:
-        print(f"Skipping PNG export for segment distribution: {exc}")
+    fig.write_image(str(OUTPUT_DIR / "segment_distribution.png"), scale=2)
     print("Saved segment distribution charts.")
 
     return fig
