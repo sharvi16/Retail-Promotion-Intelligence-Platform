@@ -208,12 +208,6 @@ retail-promotion-intelligence/
 
 ---
 
-## Resume One-Liner
-
-> Built a retail promotion intelligence platform using econometric modeling (log-log OLS), customer segmentation (RFM + K-Means), and constrained budget optimization (SciPy SLSQP) on 2 years of household transaction data — with an interactive Streamlit dashboard that identifies optimal promo strategies per segment, showing that shallow 5% discounts yield 4.9x ROI while BOGO offers destroy 269% of margin despite 294% volume lift.
-
----
-
 ## Future Work
 
 - **Time-series demand forecasting** (Prophet/LightGBM) to predict baseline demand before overlaying promo effects
